@@ -107,15 +107,6 @@ void NativeDBJsonWriter::Write(Global& aGlobal)
 
 void NativeDBJsonWriter::Write(std::shared_ptr<Class> aClass)
 {
-    auto dir = m_dir / L"classes";
-    if (!std::filesystem::exists(dir))
-    {
-        std::filesystem::create_directories(dir);
-    }
-
-    std::string name = aClass->name.ToString();
-    std::fstream file(dir / (name + ".json"), std::ios::out);
-
     bool isStruct = aClass->flags.isScriptedStruct;
     bool isClass = aClass->flags.isScriptedClass;
 
@@ -184,21 +175,10 @@ void NativeDBJsonWriter::Write(std::shared_ptr<Class> aClass)
     }
 
     m_classes.emplace_back(obj);
-
-    file << obj << std::endl;
 }
 
 void NativeDBJsonWriter::Write(std::shared_ptr<Enum> aEnum)
 {
-    auto dir = m_dir / L"enums";
-    if (!std::filesystem::exists(dir))
-    {
-        std::filesystem::create_directories(dir);
-    }
-
-    std::string name = aEnum->name.ToString();
-    std::fstream file(dir / (name + ".json"), std::ios::out);
-
     nlohmann::ordered_json obj;
     obj[AST_ENUM_NAME] = aEnum->name.ToString();
 
@@ -255,21 +235,10 @@ void NativeDBJsonWriter::Write(std::shared_ptr<Enum> aEnum)
     obj[AST_ENUM_MEMBERS] = members;
 
     m_enums.emplace_back(obj);
-
-    file << obj << std::endl;
 }
 
 void NativeDBJsonWriter::Write(std::shared_ptr<BitField> aBit)
 {
-    auto dir = m_dir / L"bitfields";
-    if (!std::filesystem::exists(dir))
-    {
-        std::filesystem::create_directories(dir);
-    }
-
-    std::string name = aBit->name.ToString();
-    std::fstream file(dir / (name + ".json"), std::ios::out);
-
     nlohmann::ordered_json obj;
     obj[AST_BITFIELD_NAME] = aBit->name.ToString();
 
@@ -306,8 +275,6 @@ void NativeDBJsonWriter::Write(std::shared_ptr<BitField> aBit)
     obj[AST_BITFIELD_MEMBERS] = members;
 
     m_bitfields.emplace_back(obj);
-
-    file << obj << std::endl;
 }
 
 void NativeDBJsonWriter::Flush()
