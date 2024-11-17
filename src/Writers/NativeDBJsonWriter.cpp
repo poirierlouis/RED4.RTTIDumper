@@ -43,6 +43,7 @@
 #define AST_PROP_TYPE "a"
 #define AST_PROP_NAME "b"
 #define AST_PROP_FLAGS "c"
+#define AST_PROP_OFFSET "d"
 
 #define AST_TYPE_FLAG "a"
 #define AST_TYPE_NAME "b"
@@ -313,6 +314,11 @@ nlohmann::ordered_json NativeDBJsonWriter::ProcessType(RED4ext::CProperty* aProp
         PropertyFlags flags = ProcessPropertyFlags(aProperty->flags);
 
         obj[AST_PROP_FLAGS] = *reinterpret_cast<uint8_t*>(&flags);
+
+        if (aProperty->valueOffset != 0)
+        {
+            obj[AST_PROP_OFFSET] = aProperty->valueOffset;
+        }
     }
 
     return obj;
