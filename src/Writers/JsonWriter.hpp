@@ -8,6 +8,10 @@ public:
     JsonWriter(const std::filesystem::path& aRootDir, bool aPrettyDump = false);
     ~JsonWriter() = default;
 
+    void CollectScripts(const RED4ext::ScriptBundle& aBundle)
+    {
+    }
+
     void Write(Global& aGlobal);
     void Write(std::shared_ptr<Class> aClass);
     void Write(std::shared_ptr<Enum> aEnum);

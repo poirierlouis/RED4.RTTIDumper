@@ -3,11 +3,15 @@
 #include <RED4ext/Dump/Reflection.hpp>
 
 #include "Dumper.hpp"
+#include "AddressProvider.hpp"
 #include "SuspendThreads.hpp"
 #include "Writers/JsonWriter.hpp"
 #include "Writers/TextWriter.hpp"
 #include "Writers/WolvenKitWriter.hpp"
 #include "Writers/NativeDBJsonWriter.hpp"
+
+RED4ext::PluginHandle gHandle;
+const RED4ext::Sdk* gSdk;
 
 RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::PluginHandle aHandle, RED4ext::EMainReason aReason,
                                         const RED4ext::Sdk* aSdk)
@@ -16,6 +20,8 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::PluginHandle aHandle, RED4ext::
     {
     case RED4ext::EMainReason::Load:
     {
+        gHandle = aHandle;
+        gSdk = aSdk;
         RED4ext::GameState state;
         state.OnEnter = nullptr;
         state.OnUpdate = [](RED4ext::CGameApplication* aApp) {
@@ -26,19 +32,22 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::PluginHandle aHandle, RED4ext::
             auto dumpsDir = std::filesystem::current_path() / L"dumps";
 
             std::vector<std::shared_ptr<IWriter>> writers;
-            writers.emplace_back(new TextWriter(dumpsDir));
-            writers.emplace_back(new JsonWriter(dumpsDir, true));
-            writers.emplace_back(new WolvenKitWriter(dumpsDir));
+            //writers.emplace_back(new TextWriter(dumpsDir));
+            //writers.emplace_back(new JsonWriter(dumpsDir, true));
+            //writers.emplace_back(new WolvenKitWriter(dumpsDir));
             writers.emplace_back(new NativeDBJsonWriter(dumpsDir));
 
-            Dumper dumper;
+            RED4ext::AddressProvider addrProvider;
+
+            Dumper dumper(gHandle, gSdk);
+
             for (auto writer : writers)
             {
                 dumper.Run(writer);
             }
 
-            auto path = dumpsDir / L"cpp";
-            RED4ext::GameReflection::Dump(path);
+            //auto path = dumpsDir / L"cpp";
+            //RED4ext::GameReflection::Dump(path);
 
             return true;
         };

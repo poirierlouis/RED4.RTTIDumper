@@ -1,5 +1,12 @@
 #include "stdafx.hpp"
 #include "Dumper.hpp"
+#include <iostream>
+
+Dumper::Dumper(RED4ext::PluginHandle aHandle, const RED4ext::Sdk* aSdk)
+    : m_handle(aHandle),
+      m_sdk(aSdk)
+{
+}
 
 void Dumper::Run(std::shared_ptr<IWriter> aWriter)
 {
@@ -9,7 +16,11 @@ void Dumper::Run(std::shared_ptr<IWriter> aWriter)
         CollectStatics();
 
         OrderFunctions();
+
+        CollectScripts();
     }
+
+    aWriter->CollectScripts(m_bundle);
 
     aWriter->Write(m_global);
 
@@ -187,6 +198,27 @@ void Dumper::CollectStatics()
             m_global.funcs.emplace_back(aFunction);
         }
     });
+}
+
+void Dumper::CollectScripts()
+{
+    // NOTE: should change to some
+    // "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Cyberpunk 2077\\r6\\cache\\final.redscripts"
+    auto gamePath = std::filesystem::current_path().parent_path().parent_path() / "r6" / "cache" / "final.redscripts";
+    auto isRead = m_bundle.Read(gamePath.string());
+
+    m_sdk->logger->InfoF(m_handle, "Reading ScriptBundle in \"%s\"...", gamePath.string().c_str());
+    if (!isRead)
+    {
+        m_sdk->logger->Error(m_handle, "Failed to read ScriptBundle.");
+        return;
+    }
+    m_definitions = m_bundle.Collect();
+    m_sdk->logger->InfoF(m_handle, "Found %d definitions with ScriptBundle:", m_definitions.size);
+    m_sdk->logger->InfoF(m_handle, "- %d globals", m_bundle.globals.size);
+    m_sdk->logger->InfoF(m_handle, "- %d enums", m_bundle.enums.size);
+    m_sdk->logger->InfoF(m_handle, "- %d bitfields", m_bundle.bitfields.size);
+    m_sdk->logger->InfoF(m_handle, "- %d classes", m_bundle.classes.size);
 }
 
 void Dumper::OrderFunctions()

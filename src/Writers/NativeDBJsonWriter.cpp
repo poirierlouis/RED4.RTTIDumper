@@ -95,12 +95,22 @@ NativeDBJsonWriter::NativeDBJsonWriter(const std::filesystem::path& aRootDir)
     m_primitives["Variant"] = PrimitiveDef::Variant;
 }
 
+
+void NativeDBJsonWriter::CollectScripts(const RED4ext::ScriptBundle& aBundle)
+{
+    m_scriptGlobals = aBundle.globals;
+    m_scriptEnums = aBundle.enums;
+    m_scriptBitfields = aBundle.bitfields;
+    m_scriptClasses = aBundle.classes;
+}
+
+
 void NativeDBJsonWriter::Write(Global& aGlobal)
 {
-
     for (auto& func : aGlobal.funcs)
     {
-        auto obj = ProcessType(func);
+        auto scriptFunc = FindScriptGlobal(func->shortName);
+        auto obj = ProcessType(func, scriptFunc);
 
         m_globals.emplace_back(obj);
     }
@@ -108,6 +118,7 @@ void NativeDBJsonWriter::Write(Global& aGlobal)
 
 void NativeDBJsonWriter::Write(std::shared_ptr<Class> aClass)
 {
+    auto scriptClass = FindScriptClass(aClass->name);
     bool isStruct = aClass->flags.isScriptedStruct;
     bool isClass = aClass->flags.isScriptedClass;
 
@@ -153,7 +164,8 @@ void NativeDBJsonWriter::Write(std::shared_ptr<Class> aClass)
 
     for (auto& prop : aClass->props)
     {
-        auto obj = ProcessType(prop);
+        //auto scriptProp = FindScriptProperty(scriptClass, prop->name);
+        auto obj = ProcessType(prop); // , scriptProp);
         props.emplace_back(obj);
     }
 
@@ -166,7 +178,8 @@ void NativeDBJsonWriter::Write(std::shared_ptr<Class> aClass)
 
     for (auto& func : aClass->funcs)
     {
-        auto obj = ProcessType(func);
+        auto scriptFunc = FindScriptFunction(scriptClass, func->shortName);
+        auto obj = ProcessType(func, scriptFunc);
         funcs.emplace_back(obj);
     }
 
@@ -291,7 +304,7 @@ void NativeDBJsonWriter::Flush()
     bitfields_file << m_bitfields << std::endl;
 }
 
-nlohmann::ordered_json NativeDBJsonWriter::ProcessType(RED4ext::CProperty* aProperty, bool isArgument) const
+nlohmann::ordered_json NativeDBJsonWriter::ProcessType(RED4ext::CProperty* aProperty, bool isArgument, RED4ext::ScriptParameter* aScriptProperty) const
 {
     nlohmann::ordered_json obj;
 
@@ -305,15 +318,29 @@ nlohmann::ordered_json NativeDBJsonWriter::ProcessType(RED4ext::CProperty* aProp
 
     if (isArgument)
     {
-        ArgumentFlags flags = ProcessArgumentFlags(aProperty->flags);
+        RED4ext::ScriptParameter::Flags scriptFlags{};
 
-        obj[AST_PROP_FLAGS] = *reinterpret_cast<uint8_t*>(&flags);
+        if (aScriptProperty != nullptr)
+        {
+            scriptFlags = aScriptProperty->flags;
+        }
+        ArgumentFlags flags = ProcessArgumentFlags(aProperty->flags, scriptFlags);
+        auto flagsValue = *reinterpret_cast<uint8_t*>(&flags);
+
+        if (flagsValue != 0)
+        {
+            obj[AST_PROP_FLAGS] = *reinterpret_cast<uint8_t*>(&flags);
+        }
     }
     else
     {
         PropertyFlags flags = ProcessPropertyFlags(aProperty->flags);
+        auto flagsValue = *reinterpret_cast<uint8_t*>(&flags);
 
-        obj[AST_PROP_FLAGS] = *reinterpret_cast<uint8_t*>(&flags);
+        if (flagsValue != 0)
+        {
+            obj[AST_PROP_FLAGS] = *reinterpret_cast<uint8_t*>(&flags);
+        }
 
         if (aProperty->valueOffset != 0)
         {
@@ -324,7 +351,7 @@ nlohmann::ordered_json NativeDBJsonWriter::ProcessType(RED4ext::CProperty* aProp
     return obj;
 }
 
-nlohmann::ordered_json NativeDBJsonWriter::ProcessType(RED4ext::CBaseFunction* aFunction) const
+nlohmann::ordered_json NativeDBJsonWriter::ProcessType(RED4ext::CBaseFunction* aFunction, RED4ext::ScriptFunction* aScriptFunction) const
 {
     nlohmann::ordered_json obj;
     const auto& fullName = aFunction->fullName.ToString();
@@ -349,7 +376,7 @@ nlohmann::ordered_json NativeDBJsonWriter::ProcessType(RED4ext::CBaseFunction* a
 
     for (auto& param : aFunction->params)
     {
-        auto obj = ProcessType(param, true);
+        auto obj = ProcessType(param, true, FindScriptParameter(aScriptFunction, param->name));
         params.emplace_back(obj);
     }
 
@@ -501,7 +528,7 @@ nlohmann::ordered_json NativeDBJsonWriter::ProcessType(RED4ext::CBaseRTTIType* a
 
 NativeDBJsonWriter::ClassFlags NativeDBJsonWriter::ProcessClassFlags(RED4ext::CClass::Flags aFlags) const
 {
-    NativeDBJsonWriter::ClassFlags flags;
+    NativeDBJsonWriter::ClassFlags flags{};
 
     flags.isPrivate = aFlags.isPrivate;
     flags.isProtected = aFlags.isProtected;
@@ -514,7 +541,7 @@ NativeDBJsonWriter::ClassFlags NativeDBJsonWriter::ProcessClassFlags(RED4ext::CC
 
 NativeDBJsonWriter::PropertyFlags NativeDBJsonWriter::ProcessPropertyFlags(RED4ext::CProperty::Flags aFlags) const
 {
-    NativeDBJsonWriter::PropertyFlags flags;
+    NativeDBJsonWriter::PropertyFlags flags{};
 
     flags.isPrivate = aFlags.isPrivate;
     flags.isProtected = aFlags.isProtected;
@@ -527,11 +554,11 @@ NativeDBJsonWriter::PropertyFlags NativeDBJsonWriter::ProcessPropertyFlags(RED4e
     return flags;
 }
 
-NativeDBJsonWriter::ArgumentFlags NativeDBJsonWriter::ProcessArgumentFlags(RED4ext::CProperty::Flags aFlags) const
+NativeDBJsonWriter::ArgumentFlags NativeDBJsonWriter::ProcessArgumentFlags(RED4ext::CProperty::Flags aFlags, RED4ext::ScriptParameter::Flags aScriptFlags) const
 {
-    NativeDBJsonWriter::ArgumentFlags flags;
+    NativeDBJsonWriter::ArgumentFlags flags{};
 
-    flags.isConst = 0; //aFlags.isConst;
+    flags.isConst = aScriptFlags.isConst;
     flags.isOut = aFlags.isOut;
     flags.isOptional = aFlags.isOptional;
     flags.b3 = 0;
@@ -540,7 +567,7 @@ NativeDBJsonWriter::ArgumentFlags NativeDBJsonWriter::ProcessArgumentFlags(RED4e
 
 NativeDBJsonWriter::FunctionFlags NativeDBJsonWriter::ProcessFunctionFlags(RED4ext::CBaseFunction::Flags aFlags) const
 {
-    NativeDBJsonWriter::FunctionFlags flags;
+    NativeDBJsonWriter::FunctionFlags flags{};
 
     flags.isPrivate = aFlags.isPrivate;
     flags.isProtected = aFlags.isProtected;
@@ -554,4 +581,84 @@ NativeDBJsonWriter::FunctionFlags NativeDBJsonWriter::ProcessFunctionFlags(RED4e
     flags.isTimer = aFlags.isTimer;
     flags.b10 = 0;
     return flags;
+}
+
+RED4ext::ScriptFunction* NativeDBJsonWriter::FindScriptGlobal(const RED4ext::CName& aName) const
+{
+    for (const auto& scriptGlobal : m_scriptGlobals)
+    {
+        if (scriptGlobal->shortName == aName)
+        {
+            return scriptGlobal;
+        }
+    }
+    return nullptr;
+}
+
+RED4ext::ScriptEnum* NativeDBJsonWriter::FindScriptEnum(const RED4ext::CName& aName) const
+{
+    for (const auto& scriptEnum : m_scriptEnums)
+    {
+        if (scriptEnum->name == aName)
+        {
+            return scriptEnum;
+        }
+    }
+    return nullptr;
+}
+
+RED4ext::ScriptBitfield* NativeDBJsonWriter::FindScriptBitfield(const RED4ext::CName& aName) const
+{
+    for (const auto& scriptBitfield : m_scriptBitfields)
+    {
+        if (scriptBitfield->name == aName)
+        {
+            return scriptBitfield;
+        }
+    }
+    return nullptr;
+}
+
+RED4ext::ScriptClass* NativeDBJsonWriter::FindScriptClass(const RED4ext::CName& aName) const
+{
+    for (const auto& scriptClass : m_scriptClasses)
+    {
+        if (scriptClass->name == aName)
+        {
+            return scriptClass;
+        }
+    }
+    return nullptr;
+}
+
+RED4ext::ScriptFunction* NativeDBJsonWriter::FindScriptFunction(RED4ext::ScriptClass* aScriptClass, const RED4ext::CName& aName) const
+{
+    if (aScriptClass == nullptr)
+    {
+        return nullptr;
+    }
+    for (const auto& scriptFunction : aScriptClass->functions)
+    {
+        if (scriptFunction->shortName == aName)
+        {
+            return scriptFunction;
+        }
+    }
+    return nullptr;
+}
+
+RED4ext::ScriptParameter* NativeDBJsonWriter::FindScriptParameter(RED4ext::ScriptFunction* aScriptFunction, const RED4ext::CName& aName) const
+{
+    if (aScriptFunction == nullptr)
+    {
+        return nullptr;
+    }
+    for (const auto& scriptParam : aScriptFunction->params)
+    {
+        if (scriptParam->name == aName)
+        {
+            return scriptParam;
+        }
+    }
+    return nullptr;
 }

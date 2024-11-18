@@ -7,6 +7,10 @@ class WolvenKitWriter : public IWriter
 public:
     WolvenKitWriter(const std::filesystem::path& aRootDir);
     ~WolvenKitWriter() = default;
+    
+    void CollectScripts(const RED4ext::ScriptBundle& aBundle)
+    {
+    }
 
     void Write(Global& aGlobal);
     void Write(std::shared_ptr<Class> aClass);
